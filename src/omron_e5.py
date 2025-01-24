@@ -19,7 +19,7 @@ class CWFPDUStructureCommand:
         self.main_request_code = main_request_code
         self.sub_request_code = sub_request_code
         self.data = data
-        self.pdu_string = f'{main_request_code:02X}{sub_request_code:02X}{data}'
+        self.pdu_string = f'{main_request_code:02}{sub_request_code:02}{data}'
 
 
 class CWFCommandFrame:
@@ -45,7 +45,7 @@ class CWFResponseFrame:
     def __init__(self, response_frame: bytes):
         self.node_number = int(response_frame[1:3])
         self.sub_address = int(response_frame[3:5])
-        self.end_code = int(response_frame[5:7])
+        self.end_code = int(response_frame[5:7], 16)
         self.service_response_pdu = CWFPDUStructureResponse(response_frame[7:-2])
         self.bcc = response_frame[-1:]
 
@@ -59,9 +59,18 @@ class E5:
         self.port = serial.Serial(port=port_name, baudrate=baud_rate, bytesize=data_length,
                                   parity=parity, stopbits=stop_bits, timeout=timeout)
 
-    def read_process_value(self, node):
+    def read_process_value(self, node: int):
         pv = self.read_variable_area(node, 'C0',0, 1)
         return int(pv.service_response_pdu.data, 16)
+
+    def read_set_point(self, node: int):
+        sp = self.read_variable_area(node, 'C1', 3, 1)
+        return int(sp.service_response_pdu.data, 16)
+
+    def write_set_point(self, node: int, value: int):
+        value = f'{value:08X}'.encode('utf-8')
+        response = self.write_variable_area(node, 'C1', 3, value)
+        return response
 
     def read_variable_area(self, node: int, variable_type: str, start_address: int,
                       number_of_elements: int, bit_position: int=0):
@@ -77,9 +86,29 @@ class E5:
         return response
 
 
-    def write_variable_area(self, variable_type: str, start_address: int,
+    def write_variable_area(self, node: int, variable_type: str, start_address: int,
                             write_data: bytes, bit_position: int=0):
-        pass
+        if variable_type in ['C0', 'C1', 'C2']:
+            number_of_elements = len(write_data)//8
+        elif variable_type in ['80', '81', '82']:
+            number_of_elements = len(write_data)//4
+        else:
+            raise ValueError('variable_type must be: CO, C1, C2, 80, 81, or 82')
+        number_of_elements = f'{number_of_elements:04X}'
+        data = f'{variable_type}{start_address:04X}{bit_position:02X}{number_of_elements}{write_data.decode('utf-8')}'
+        pdu_command = CWFPDUStructureCommand(1, 2, data)
+        response = self._send_command(node, pdu_command.pdu_string)
+        return response
+
+    def enable_com_write(self, node: int):
+        pdu_command = CWFPDUStructureCommand(30,5, data='0001')
+        response = self._send_command(node, pdu_command.pdu_string)
+        return response
+
+    def disable_com_write(self, node: int):
+        pdu_command = CWFPDUStructureCommand(30,5, data='0000')
+        response = self._send_command(node, pdu_command.pdu_string)
+        return response
 
     def read_controller_attributes(self, node: int):
         pdu_command = CWFPDUStructureCommand(5,3)
