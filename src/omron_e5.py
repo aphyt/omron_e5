@@ -85,7 +85,6 @@ class E5:
         response = self._send_command(node, pdu_command.pdu_string)
         return response
 
-
     def write_variable_area(self, node: int, variable_type: str, start_address: int,
                             write_data: bytes, bit_position: int=0):
         if variable_type in ['C0', 'C1', 'C2']:
@@ -131,7 +130,6 @@ class E5:
         time.sleep(read_delay)
         response = self.port.read_all()
         return response
-
 
     def disconnect(self):
         self.port.close()
